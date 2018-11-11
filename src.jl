@@ -2,6 +2,8 @@ using Random
 using Printf
 using Combinatorics
 using Statistics
+using GR
+using Dates
 
 @enum Choice C=1 D=2
 
@@ -41,30 +43,41 @@ GTFT = Strategy("GTFT",
 (memory, b_ID) -> (memory[1] == Int(D) && rand() >= generousness) ? D : C,
 (memory, b_choice) -> memory[1] = Int(b_choice))
 
-memory(s::Strategy) = Strategy("memory " * s.name,
+memory(s::Strategy) = Strategy("m" * s.name,
 (memory, b_ID) -> begin
-	if b_ID in memory[2:end]
-		return
+	b_ind = findfirst(==(b_ID), memory[2:end])
+	if b_ind != nothing
+		memory[3:b_ind] = memory[2:b_ind-1]
+		memory[2] = b_ID
+		return D
+	else
+		memory[3:end] = memory[2:end-1]
+		memory[2] = b_ID
+		return s.decision(memory, b_ID)
 	end
-	memory[3:end] = memory[2:end-1]
-	memory[2] = b_ID
-	return s.decision(memory, b_ID)
-end
-(memory, b_choice) ->
-	
+end,
+(memory, b_choice) -> begin
+	s.learning(memory, b_choice)
+	if b_choice == C
+		memory[2:end-1] = memory[3:end]
+		memory[end] = 0
+	end
+end)
 
 initial_census = Dict(
-	ALLD => 1,
+	ALLD => 10,
 	ALLC => 0,
+	memory(ALLC) => 15,
 	GRIM => 0,
 	TFT  => 0,
-	GTFT => 20,
+	GTFT => 0,
+	memory(GTFT) => 0,
 )
 
-memory_size = 10
+memory_size = initial_census[ALLD] + 3
 
 newborn_HP = 100
-fruitful_HP = 1.5 * newborn_HP
+fruitful_HP = 2 * newborn_HP
 starving_HP = 0 # newborn_HP / 2
 
 ID_counter = 0
@@ -129,24 +142,67 @@ function census(agents)
 	return census
 end
 
-function print_census(agents)
-	for (strategy, (n, HP)) in census(agents)
-		@printf("%4s: %3d - %4d\n", strategy.name, n, HP)
-	end
-end
-
 function existence(agents, years)
-	println("Year #0")
-	print_census(agents)
-	for y in 1:years
-		agents = year(agents)
-		println("Year #$(y)")
-		print_census(agents)
-	end
+	return Channel((c) -> begin
+					   put!(c, census(agents))
+					   for y in 1:years
+						   agents = year(agents)
+						   put!(c, census(agents))
+					   end
+				   end)
 end
 
 population(census) = [Agent(strategy)
 					  for (strategy, n) in census
 					  for i in 1:n]
 
-existence(population(initial_census), 20)
+function print_census(census::Dict)
+	for (strategy, (n, HP)) in census
+		@printf("%5s: %3d - %4d - %5.1f\n", strategy.name, n, HP, HP / n)
+	end
+end
+
+function print_census(agents::Array{Agent})
+	print_census(census(agents))
+end
+
+function print_census(title::String, x::Any) 
+	println(title)
+	print_census(x)
+end
+
+years = 30
+
+function plot_censi(censi::Dict{Strategy,Array})
+	# setlinecolorind(218)
+	# grid(1, 0.1, 0, 0, 1, 10)
+	# clearws()
+	filename = Dates.format(now(), "yyyy_mm_dd__HH_MM_SS_s") * ".png"
+	beginprint(filename)
+
+	snames = (s.name for s in keys(censi))
+	labels = vec(permutedims(snames .* [" #" " HP"], (2, 1)))
+	y_values = hcat(values(censi)...)
+	plot(0:years, y_values, ylim=(0, 1), labels=labels)
+
+	endprint()
+
+	println("Plot is also available on $filename")
+	print("Press Enter to continue...")
+	read(stdin, Char)
+end
+
+censi = Dict{Strategy,Array}()
+for (yearp1, census) in enumerate(existence(population(initial_census), years))
+	print_census("Year #$(yearp1 - 1)", census)
+
+	sum_vals = sum(values(census))
+	for (strategy, vals) in census
+		if !haskey(censi, strategy)
+			censi[strategy] = zeros(years + 1, 2)
+		end
+		censi[strategy][yearp1, :] = vals ./ sum_vals
+	end
+end
+
+plot_censi(censi)
