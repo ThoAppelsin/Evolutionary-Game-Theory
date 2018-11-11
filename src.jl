@@ -21,24 +21,45 @@ struct Strategy
 end
 
 ALLD = Strategy("ALLD",
-				(memory, b_ID) -> D,
-				(memory, b_choice) -> nothing)
+(memory, b_ID) -> D,
+(memory, b_choice) -> nothing)
+
 ALLC = Strategy("ALLC",
-				(memory, b_ID) -> C,
-				(memory, b_choice) -> nothing)
+(memory, b_ID) -> C,
+(memory, b_choice) -> nothing)
+
 GRIM = Strategy("GRIM",
-				(memory, b_ID) -> memory[1] == 1 ? D : C,
-				(memory, b_choice) -> if b_choice == D
-					memory[1] = 1
-				end)
+(memory, b_ID) -> memory[1] == 1 ? D : C,
+(memory, b_choice) -> if b_choice == D; memory[1] = 1 end)
+
 TFT = Strategy("TFT",
-			   (memory, b_ID) -> memory[1] == Int(D) ? D : C,
-			   (memory, b_choice) -> memory[1] = Int(b_choice))
+(memory, b_ID) -> memory[1] == Int(D) ? D : C,
+(memory, b_choice) -> memory[1] = Int(b_choice))
+
 generousness = min(1 - (T - R) / (R - S), (R - P) / (T - P))
 GTFT = Strategy("GTFT",
-				(memory, b_ID) -> (memory[1] == Int(D) &&
-								   rand() >= generousness) ? D : C,
-				(memory, b_choice) -> memory[1] = Int(b_choice))
+(memory, b_ID) -> (memory[1] == Int(D) && rand() >= generousness) ? D : C,
+(memory, b_choice) -> memory[1] = Int(b_choice))
+
+memory(s::Strategy) = Strategy("memory " * s.name,
+(memory, b_ID) -> begin
+	if b_ID in memory[2:end]
+		return
+	end
+	memory[3:end] = memory[2:end-1]
+	memory[2] = b_ID
+	return s.decision(memory, b_ID)
+end
+(memory, b_choice) ->
+	
+
+initial_census = Dict(
+	ALLD => 1,
+	ALLC => 0,
+	GRIM => 0,
+	TFT  => 0,
+	GTFT => 20,
+)
 
 memory_size = 10
 
@@ -128,9 +149,4 @@ population(census) = [Agent(strategy)
 					  for (strategy, n) in census
 					  for i in 1:n]
 
-existence(population([
-					  #(GRIM, 20),
-					  (ALLD, 1),
-					  #(ALLD, 20),
-					  (GTFT, 20),
-					  ]), 20)
+existence(population(initial_census), 20)
