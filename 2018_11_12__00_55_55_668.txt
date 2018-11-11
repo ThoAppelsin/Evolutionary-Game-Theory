@@ -1,0 +1,86 @@
+Payoff Matrix: [0.75 -2.25; 2.75 -1.25]
+Year #0
+ ALLD:  10 - 1000 - 100.0
+mALLC:  15 - 1500 - 100.0
+Year #1
+ ALLD:  10 - 1300 - 130.0
+mALLC:  15 - 1320 -  88.0
+Year #2
+ ALLD:  10 - 1212 - 121.2
+mALLC:  15 - 1237 -  82.5
+Year #3
+ ALLD:  10 - 1160 - 116.0
+mALLC:  15 - 1145 -  76.3
+Year #4
+ ALLD:  10 - 1084 - 108.4
+mALLC:  15 - 1059 -  70.6
+Year #5
+ ALLD:  10 - 1040 - 104.0
+mALLC:  15 -  965 -  64.3
+Year #6
+ ALLD:  10 -  972 -  97.2
+mALLC:  15 -  877 -  58.5
+Year #7
+ ALLD:  10 -  904 -  90.4
+mALLC:  15 -  789 -  52.6
+Year #8
+ ALLD:  10 -  840 -  84.0
+mALLC:  15 -  700 -  46.7
+Year #9
+ ALLD:  10 -  780 -  78.0
+mALLC:  15 -  610 -  40.7
+Year #10
+ ALLD:  10 -  704 -  70.4
+mALLC:  15 -  524 -  34.9
+Year #11
+ ALLD:  10 -  628 -  62.8
+mALLC:  15 -  438 -  29.2
+Year #12
+ ALLD:  10 -  552 -  55.2
+mALLC:  15 -  352 -  23.5
+Year #13
+ ALLD:   8 -  504 -  63.0
+mALLC:  15 -  262 -  17.5
+Year #14
+ ALLD:   8 -  416 -  52.0
+mALLC:  15 -  237 -  15.8
+Year #15
+ ALLD:   7 -  337 -  48.1
+mALLC:  15 -  209 -  13.9
+Year #16
+ ALLD:   6 -  249 -  41.4
+mALLC:  15 -  213 -  14.2
+Year #17
+ ALLD:   4 -  203 -  50.8
+mALLC:  15 -  234 -  15.6
+Year #18
+ ALLD:   4 -  141 -  35.3
+mALLC:  15 -  310 -  20.6
+Year #19
+ ALLD:   2 -   82 -  40.8
+mALLC:  15 -  386 -  25.8
+Year #20
+ ALLD:   2 -   46 -  22.8
+mALLC:  15 -  505 -  33.7
+Year #21
+ ALLD:   1 -   19 -  18.8
+mALLC:  15 -  623 -  41.5
+Year #22
+ ALLD:   1 -    4 -   4.0
+mALLC:  15 -  761 -  50.7
+Year #23
+mALLC:  15 -  900 -  60.0
+Year #24
+mALLC:  15 - 1057 -  70.5
+Year #25
+mALLC:  15 - 1215 -  81.0
+Year #26
+mALLC:  15 - 1372 -  91.5
+Year #27
+mALLC:  15 - 1530 - 102.0
+Year #28
+mALLC:  15 - 1687 - 112.5
+Year #29
+mALLC:  15 - 1845 - 123.0
+Year #30
+mALLC:  15 - 2002 - 133.5
