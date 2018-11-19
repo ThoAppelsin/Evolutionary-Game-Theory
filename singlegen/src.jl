@@ -6,6 +6,7 @@ using GR
 using Dates
 
 @enum Choice C=1 D=2
+ChoiceOrNot = Union{Choice, Nothing}
 
 R = 3; S = 0
 T = 5; P = 1
@@ -14,7 +15,12 @@ payoff_matrix = [R S
 payoff_matrix = payoff_matrix .- mean(payoff_matrix)
 println("Payoff Matrix: ", payoff_matrix)
 
-payoff(a::Choice, b::Choice) = payoff_matrix[Int(a), Int(b)]
+yearly_tax = 0
+println("Yearly Tax: ", yearly_tax)
+
+payoff(a::ChoiceOrNot, b::ChoiceOrNot) =
+    (a == nothing || b == nothing) ? 0 :
+    payoff_matrix[Int(a), Int(b)]
 
 struct Strategy
 	name::String
@@ -43,13 +49,14 @@ GTFT = Strategy("GTFT",
 (memory, b_ID) -> (memory[1] == Int(D) && rand() >= generousness) ? D : C,
 (memory, b_choice) -> memory[1] = Int(b_choice))
 
-memory(s::Strategy) = Strategy("m" * s.name,
+memory1(s::Strategy) = Strategy("m" * s.name,
 (memory, b_ID) -> begin
 	b_ind = findfirst(==(b_ID), memory[2:end])
 	if b_ind != nothing
+		b_ind += 1
 		memory[3:b_ind] = memory[2:b_ind-1]
 		memory[2] = b_ID
-		return D
+		return nothing
 	else
 		memory[3:end] = memory[2:end-1]
 		memory[2] = b_ID
@@ -58,23 +65,50 @@ memory(s::Strategy) = Strategy("m" * s.name,
 end,
 (memory, b_choice) -> begin
 	s.learning(memory, b_choice)
-	if b_choice == C
+	if b_choice == C || b_choice == nothing
+		memory[2:end-1] = memory[3:end]
+		memory[end] = 0
+	end
+end)
+
+memory2(s::Strategy) = Strategy("m" * s.name,
+(memory, b_ID) -> begin
+	b_ind = findfirst(==(b_ID), memory[2:end])
+	if b_ind != nothing
+		b_ind += 1
+		memory[3:b_ind] = memory[2:b_ind-1]
+		memory[2] = b_ID
+		return nothing
+	else
+		empty_ind = findfirst(==(0), memory[2:end])
+		if empty_ind != nothing
+			empty_ind += 1
+			memory[3:empty_ind] = memory[2:empty_ind-1]
+		end
+		memory[2] = b_ID
+		return s.decision(memory, b_ID)
+	end
+end,
+(memory, b_choice) -> begin
+	s.learning(memory, b_choice)
+	if b_choice == C || b_choice == nothing
 		memory[2:end-1] = memory[3:end]
 		memory[end] = 0
 	end
 end)
 
 initial_census = Dict(
-	ALLD => 10,
+	ALLD => 40,
 	ALLC => 0,
-	memory(ALLC) => 15,
+	memory2(ALLC) => 15,
 	GRIM => 0,
 	TFT  => 0,
 	GTFT => 0,
-	memory(GTFT) => 0,
+	memory1(GTFT) => 0,
 )
 
-memory_size = initial_census[ALLD] + 3
+memory_size = initial_census[ALLD]
+capacity = 50
 
 newborn_HP = 100
 fruitful_HP = 2 * newborn_HP
@@ -90,11 +124,14 @@ mutable struct Agent
 	ID :: Int
 end
 
-Agent(s::Strategy) = Agent(s, zeros(Int, memory_size), newborn_HP, new_ID())
+Agent(s::Strategy) = Agent(s, zeros(Int, memory_size),
+						   newborn_HP, new_ID())
 Agent(p::Agent) = Agent(p.strategy)
 
-decision(a::Agent, b_ID::Int)::Choice = a.strategy.decision(a.memory, b_ID)
-inform(a::Agent, b_choice::Choice) = a.strategy.learning(a.memory, b_choice)
+decision(a::Agent, b_ID::Int)::ChoiceOrNot =
+    a.strategy.decision(a.memory, b_ID)
+inform(a::Agent, b_choice::ChoiceOrNot) =
+    a.strategy.learning(a.memory, b_choice)
 
 function versus(a::Agent, b::Agent)
 	choice_a = decision(a, b.ID)
@@ -102,13 +139,6 @@ function versus(a::Agent, b::Agent)
 
 	a.HP += payoff(choice_a, choice_b)
 	b.HP += payoff(choice_b, choice_a)
-
-	#if a.strategy.name == "TFT" && choice_a == C
-		#println("cooperation against ", b.strategy.name)
-	#end
-	#if b.strategy.name == "TFT" && choice_b == C
-		#println("cooperation against ", b.strategy.name)
-	#end
 
 	inform(a, choice_b)
 	inform(b, choice_a)
@@ -122,12 +152,22 @@ function year(agents::Array{Agent})
 	for (a, b) in shuffle(collect(combinations(agents, 2)))
 		versus(a, b)
 	end
+	for a in agents
+		a.HP -= yearly_tax
+	end
 	newborn = Agent[]
 	for parent in filter(fruitful, agents)
 		parent.HP -= newborn_HP
 		push!(newborn, Agent(parent))
 	end
-	return filter(!starving, [agents; newborn])
+	agents = filter(!starving, [agents; newborn])
+	overcapacity = length(agents) - capacity
+	if overcapacity > 0
+		selection = trues(length(agents))
+		selection[1:overcapacity] .= false
+		agents = agents[shuffle(selection)]
+	end
+	return agents
 end
 
 function census(agents)
@@ -144,8 +184,13 @@ end
 
 function existence(agents, years)
 	return Channel((c) -> begin
+					   global years
 					   put!(c, census(agents))
 					   for y in 1:years
+						   if length(agents) <= 1
+							   years = y - 1
+							   break
+						   end
 						   agents = year(agents)
 						   put!(c, census(agents))
 					   end
@@ -171,37 +216,43 @@ function print_census(title::String, x::Any)
 	print_census(x)
 end
 
-years = 30
+years = 25
 
 function plot_censi(censi::Dict{Strategy,Array})
-	# setlinecolorind(218)
-	# grid(1, 0.1, 0, 0, 1, 10)
-	# clearws()
-	filename = Dates.format(now(), "yyyy_mm_dd__HH_MM_SS_s") * ".png"
-	beginprint(filename)
+	fname = Dates.format(now(), "yyyy_mm_dd__HH_MM_SS_s") * ".png"
+	beginprint(fname)
 
 	snames = (s.name for s in keys(censi))
+
 	labels = vec(permutedims(snames .* [" #" " HP"], (2, 1)))
-	y_values = hcat(values(censi)...)
-	plot(0:years, y_values, ylim=(0, 1), labels=labels)
+	vals = hcat(values(censi)...)[1:years+1, :]
+
+	snumbers = vals[:, 1:2:end]
+	sHPs = vals[:, 2:2:end]
+
+	plot(0:years, snumbers,
+		 # ylim=(0, maximum(y_values)),
+		 labels=(snames .* " #"))
 
 	endprint()
 
-	println("Plot is also available on $filename")
+	println("Plot is also available on $fname")
 	print("Press Enter to continue...")
 	read(stdin, Char)
 end
 
 censi = Dict{Strategy,Array}()
-for (yearp1, census) in enumerate(existence(population(initial_census), years))
+
+initial_population = population(initial_census)
+exist = existence(initial_population, years)
+for (yearp1, census) in enumerate(exist)
 	print_census("Year #$(yearp1 - 1)", census)
 
-	sum_vals = sum(values(census))
 	for (strategy, vals) in census
 		if !haskey(censi, strategy)
 			censi[strategy] = zeros(years + 1, 2)
 		end
-		censi[strategy][yearp1, :] = vals ./ sum_vals
+		censi[strategy][yearp1, :] = vals ./ [1, 100]
 	end
 end
 
