@@ -12,42 +12,37 @@ R = 3; S = 0
 T = 5; P = 1
 payoff_matrix = [R S
 				 T P]
-payoff_matrix = payoff_matrix .- mean(payoff_matrix)
-println("Payoff Matrix: ", payoff_matrix)
 
-yearly_tax = 0
-println("Yearly Tax: ", yearly_tax)
+~(::Nothing) = false
+~(::Choice) = true
 
-payoff(a::ChoiceOrNot, b::ChoiceOrNot) =
-    (a == nothing || b == nothing) ? 0 :
-    payoff_matrix[Int(a), Int(b)]
+payoff(a::ChoiceOrNot, b::ChoiceOrNot) = ~a && ~b ? payoff_matrix[Int(a), Int(b)] : 0
 
 struct Strategy
 	name::String
+
+	# (memory, id-of-opponent) -> choice
 	decision::Function
+
+	# (memory, choice-of-opponent) -> nothing
 	learning::Function
 end
 
-ALLD = Strategy("ALLD",
-(memory, b_ID) -> D,
-(memory, b_choice) -> nothing)
-
-ALLC = Strategy("ALLC",
-(memory, b_ID) -> C,
-(memory, b_choice) -> nothing)
-
+ALLD = Strategy("ALLD", (_, _) -> D, (_, _) -> nothing)
+ALLC = Strategy("ALLC", (_, _) -> C, (_, _) -> nothing)
 GRIM = Strategy("GRIM",
-(memory, b_ID) -> memory[1] == 1 ? D : C,
-(memory, b_choice) -> if b_choice == D; memory[1] = 1 end)
+				(m, _) -> m[1] == 1 ? D : C,
+				(m, c) -> c == D && m[1] = 1)
 
+TFT_learning = (m, c) -> m[1] = Int(c)
 TFT = Strategy("TFT",
-(memory, b_ID) -> memory[1] == Int(D) ? D : C,
-(memory, b_choice) -> memory[1] = Int(b_choice))
+			   (m, _) -> m[1] == Int(D) ? D : C,
+			   TFT_learning)
 
 generousness = min(1 - (T - R) / (R - S), (R - P) / (T - P))
 GTFT = Strategy("GTFT",
-(memory, b_ID) -> (memory[1] == Int(D) && rand() >= generousness) ? D : C,
-(memory, b_choice) -> memory[1] = Int(b_choice))
+				(m, _) -> (m[1] == Int(D) && rand() ≥ generousness) ? D : C,
+				TFT_learning)
 
 memory1(s::Strategy) = Strategy("m" * s.name,
 (memory, b_ID) -> begin
