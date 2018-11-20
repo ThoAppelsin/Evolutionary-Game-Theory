@@ -15,6 +15,7 @@ payoff_matrix = [R S
 
 ~(::Nothing) = false
 ~(::Choice) = true
+~(i::Int) = i ≠ 0
 
 payoff(a::ChoiceOrNot, b::ChoiceOrNot) = ~a && ~b ? payoff_matrix[Int(a), Int(b)] : 0
 
@@ -32,9 +33,9 @@ ALLD = Strategy("ALLD", (_, _) -> D, (_, _) -> nothing)
 ALLC = Strategy("ALLC", (_, _) -> C, (_, _) -> nothing)
 GRIM = Strategy("GRIM",
 				(m, _) -> m[1] == 1 ? D : C,
-				(m, c) -> c == D && m[1] = 1)
+				(m, c) -> if c == D; m[1] = 1 end)
 
-TFT_learning = (m, c) -> m[1] = Int(c)
+TFT_learning = (m, c) -> if ~c; m[1] = Int(c) end
 TFT = Strategy("TFT",
 			   (m, _) -> m[1] == Int(D) ? D : C,
 			   TFT_learning)
@@ -44,73 +45,67 @@ GTFT = Strategy("GTFT",
 				(m, _) -> (m[1] == Int(D) && rand() ≥ generousness) ? D : C,
 				TFT_learning)
 
-memory1(s::Strategy) = Strategy("m" * s.name,
-(memory, b_ID) -> begin
-	b_ind = findfirst(==(b_ID), memory[2:end])
-	if b_ind != nothing
-		b_ind += 1
-		memory[3:b_ind] = memory[2:b_ind-1]
-		memory[2] = b_ID
-		return nothing
-	else
-		memory[3:end] = memory[2:end-1]
-		memory[2] = b_ID
-		return s.decision(memory, b_ID)
-	end
+fifo_memory(s::Strategy) = Strategy("m" * s.name,
+(m, id) -> if ~(i = findfirst(==(id), m[2:end]))
+	i += 1
+	m[3:i] = m[2:i-1]
+	m[2] = id
+	nothing
+else
+	m[3:end] = m[2:end-1]
+	m[2] = id
+	s.decision(m, id)
 end,
-(memory, b_choice) -> begin
-	s.learning(memory, b_choice)
-	if b_choice == C || b_choice == nothing
-		memory[2:end-1] = memory[3:end]
-		memory[end] = 0
+(m, c) -> begin
+	s.learning(m, c)
+	if c ≠ D
+		m[2:end-1] = m[3:end]
+		m[end] = 0
 	end
 end)
 
-memory2(s::Strategy) = Strategy("m" * s.name,
-(memory, b_ID) -> begin
-	b_ind = findfirst(==(b_ID), memory[2:end])
-	if b_ind != nothing
-		b_ind += 1
-		memory[3:b_ind] = memory[2:b_ind-1]
-		memory[2] = b_ID
-		return nothing
-	else
-		empty_ind = findfirst(==(0), memory[2:end])
-		if empty_ind != nothing
-			empty_ind += 1
-			memory[3:empty_ind] = memory[2:empty_ind-1]
-		end
-		memory[2] = b_ID
-		return s.decision(memory, b_ID)
+filo_memory(s::Strategy) = Strategy("m" * s.name,
+(m, id) -> if ~(id_i = findfirst(==(id), m[2:end]))
+	id_i += 1
+	m[3:id_i] = m[2:id_i-1]
+	m[2] = id
+	nothing
+else
+	if ~(empty_i = findfirst(==(0), m[2:end]))
+		empty_i += 1
+		m[3:empty_i] = m[2:empty_i-1]
 	end
+	m[2] = id
+	s.decision(m, id)
 end,
-(memory, b_choice) -> begin
-	s.learning(memory, b_choice)
-	if b_choice == C || b_choice == nothing
-		memory[2:end-1] = memory[3:end]
-		memory[end] = 0
+(m, c) -> begin
+	s.learning(m, c)
+	if c ≠ D
+		m[2:end-1] = m[3:end]
+		m[end] = 0
 	end
 end)
 
 initial_census = Dict(
 	ALLD => 40,
 	ALLC => 0,
-	memory2(ALLC) => 15,
+	filo_memory(ALLC) => 15,
 	GRIM => 0,
 	TFT  => 0,
-	GTFT => 0,
-	memory1(GTFT) => 0,
+	GTFT => 20,
+	fifo_memory(GTFT) => 0,
 )
 
-memory_size = initial_census[ALLD]
+memory_size = initial_census[ALLD] * 2
 capacity = 50
 
 newborn_HP = 100
-fruitful_HP = 2 * newborn_HP
-starving_HP = 0 # newborn_HP / 2
+HP_per_child = newborn_HP
+starving_HP = 0
 
 ID_counter = 0
 new_ID() = global ID_counter += 1
+reset_ID() = global ID_counter = 0
 
 mutable struct Agent
 	strategy :: Strategy
@@ -119,16 +114,20 @@ mutable struct Agent
 	ID :: Int
 end
 
-Agent(s::Strategy) = Agent(s, zeros(Int, memory_size),
-						   newborn_HP, new_ID())
+Agent(s::Strategy) = Agent(s, zeros(Int, memory_size), newborn_HP, new_ID())
 Agent(p::Agent) = Agent(p.strategy)
 
-decision(a::Agent, b_ID::Int)::ChoiceOrNot =
-    a.strategy.decision(a.memory, b_ID)
-inform(a::Agent, b_choice::ChoiceOrNot) =
-    a.strategy.learning(a.memory, b_choice)
+decision(a, id)::ChoiceOrNot = a.strategy.decision(a.memory, id)
+inform(a, c) = a.strategy.learning(a.memory, c)
 
-function versus(a::Agent, b::Agent)
+fertility(a::Agent)::Int = div(a.HP, HP_per_child)
+starving(a::Agent)::Bool = a.HP ≤ starving_HP
+
+function versus(a, b)
+	if starving(a) || starving(b)
+		return
+	end
+
 	choice_a = decision(a, b.ID)
 	choice_b = decision(b, a.ID)
 
@@ -137,32 +136,22 @@ function versus(a::Agent, b::Agent)
 
 	inform(a, choice_b)
 	inform(b, choice_a)
-	return
 end
 
-fruitful(a::Agent)::Bool = a.HP >= fruitful_HP
-starving(a::Agent)::Bool = a.HP <= starving_HP
+τ = 30
 
 function year(agents::Array{Agent})
-	for (a, b) in shuffle(collect(combinations(agents, 2)))
+	for (a, b) in shuffle(repeat(collect(combinations(agents, 2)), τ))
 		versus(a, b)
 	end
-	for a in agents
-		a.HP -= yearly_tax
-	end
-	newborn = Agent[]
-	for parent in filter(fruitful, agents)
-		parent.HP -= newborn_HP
-		push!(newborn, Agent(parent))
-	end
-	agents = filter(!starving, [agents; newborn])
-	overcapacity = length(agents) - capacity
+	newborns = [Agent(parent) for parent in agents for i in 1:fertility(parent)]
+	overcapacity = length(newborns) - capacity
 	if overcapacity > 0
-		selection = trues(length(agents))
+		selection = trues(length(newborns))
 		selection[1:overcapacity] .= false
-		agents = agents[shuffle(selection)]
+		newborns = newborns[shuffle(selection)]
 	end
-	return agents
+	return newborns
 end
 
 function census(agents)
@@ -182,7 +171,7 @@ function existence(agents, years)
 					   global years
 					   put!(c, census(agents))
 					   for y in 1:years
-						   if length(agents) <= 1
+						   if length(agents) ≤ 1
 							   years = y - 1
 							   break
 						   end
