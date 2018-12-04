@@ -17,7 +17,7 @@ payoff_matrix = [R S
 ~(::Choice) = true
 ~(i::Int) = i ≠ 0
 
-payoff(a::ChoiceOrNot, b::ChoiceOrNot) = ~a && ~b ? payoff_matrix[Int(a), Int(b)] : 0
+payoff(a::ChoiceOrNot, b::ChoiceOrNot)::Int = ~a && ~b ? payoff_matrix[Int(a), Int(b)] : 0
 
 struct Strategy
 	name::String
@@ -99,10 +99,6 @@ initial_census = Dict(
 memory_size = initial_census[ALLD] * 2
 capacity = 50
 
-newborn_HP = 100
-HP_per_child = newborn_HP
-starving_HP = 0
-
 ID_counter = 0
 new_ID() = global ID_counter += 1
 reset_ID() = global ID_counter = 0
@@ -110,40 +106,36 @@ reset_ID() = global ID_counter = 0
 mutable struct Agent
 	strategy :: Strategy
 	memory :: Array{Int}
-	HP :: Float64
+	gold :: Float64
 	ID :: Int
 end
 
-Agent(s::Strategy) = Agent(s, zeros(Int, memory_size), newborn_HP, new_ID())
+Agent(s::Strategy) = Agent(s, zeros(Int, memory_size), 0, new_ID())
 Agent(p::Agent) = Agent(p.strategy)
 
-decision(a, id)::ChoiceOrNot = a.strategy.decision(a.memory, id)
-inform(a, c) = a.strategy.learning(a.memory, c)
+×(a::Agent, id::Int)::ChoiceOrNot = a.strategy.decision(a.memory, id)
+↑(a::Agent, po::Int) = a.gold += po
+←(a::Agent, c::ChoiceOrNot) = a.strategy.learning(a.memory, c)
 
-fertility(a::Agent)::Int = div(a.HP, HP_per_child)
-starving(a::Agent)::Bool = a.HP ≤ starving_HP
+function ×(a::Agent, b::Agent)
+	choice_a = a × b.ID
+	choice_b = b × a.ID
 
-function versus(a, b)
-	if starving(a) || starving(b)
-		return
-	end
+	a ↑ payoff(choice_a, choice_b)
+	b ↑ payoff(choice_b, choice_a)
 
-	choice_a = decision(a, b.ID)
-	choice_b = decision(b, a.ID)
-
-	a.HP += payoff(choice_a, choice_b)
-	b.HP += payoff(choice_b, choice_a)
-
-	inform(a, choice_b)
-	inform(b, choice_a)
+	a ← choice_b
+	b ← choice_a
 end
 
 τ = 30
 
 function year(agents::Array{Agent})
 	for (a, b) in shuffle(repeat(collect(combinations(agents, 2)), τ))
-		versus(a, b)
+		a × b
 	end
+	psumgold = cumsum(max.(getfield.(parent, :gold), 0))
+	fertiles = (searchsortedfirst(psumgold, x) for x in rand(length(agents)) * psumgold[end])
 	newborns = [Agent(parent) for parent in agents for i in 1:fertility(parent)]
 	overcapacity = length(newborns) - capacity
 	if overcapacity > 0
